@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat BruLyz</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #ffe6f0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    #login-card {
+      width: 300px;
+      background: #ffb3d9;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+      text-align: center;
+    }
+    #login-card h2 {
+      margin-bottom: 20px;
+      color: #fff;
+    }
+    #login-card input {
+      width: 80%;
+      padding: 10px;
+      border-radius: 5px;
+      border: none;
+      margin-bottom: 15px;
+    }
+    #login-card button {
+      padding: 10px 20px;
+      border: none;
+      background: #ff66b2;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #login-card button:hover {
+      background: #ff3399;
+    }
+
+    #chat-container {
+      width: 450px;
+      background: #fff0f5;
+      padding: 20px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      border-radius: 8px;
+      display: none;
+    }
+    #rooms {
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+    }
+    #rooms button {
+      background: #ff99cc;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      margin: 2px;
+      border-radius: 5px;
+      cursor: pointer;
+      flex: 1;
+      margin-right: 5px;
+    }
+    #rooms button:last-child {
+      margin-right: 0;
+    }
+    #rooms button.active {
+      background: #ff66b2;
+    }
+    #messages {
+      border: 1px solid #ffb3d9;
+      height: 250px;
+      overflow-y: scroll;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 5px;
+      background: #ffe6f0;
+    }
+    #messages div {
+      margin-bottom: 5px;
+      padding: 5px;
+      border-radius: 5px;
+    }
+    .my-message {
+      background-color: #ffccf2;
+      text-align: right;
+    }
+    .other-message {
+      background-color: #ffcce6;
+      text-align: left;
+    }
+    input[type="text"] {
+      width: calc(100% - 60px);
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #ffb3d9;
+    }
+    button#sendBtn {
+      padding: 10px;
+      border: none;
+      background: #ff66b2;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button#sendBtn:hover {
+      background: #ff3399;
+    }
+  </style>
+</head>
+<body>
+  <div id="login-card">
+    <h2>Digite seu nome: </h2>
+    <input type="text" id="usernameInput" placeholder="Seu nome..." />
+    <br>
+    <button id="loginBtn">Entrar</button>
+  </div>
+
+ 
+  <div id="chat-container">
+    <div id="rooms">
+      <button data-room="Sala 1" class="active">Sala 1</button>
+      <button data-room="Sala 2">Sala 2</button>
+      <button data-room="Sala 3">Sala 3</button>
+    </div>
+    <div id="messages"></div>
+    <input id="messageInput" type="text" placeholder="Digite sua mensagem..." />
+    <button id="sendBtn">Enviar</button>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    const loginCard = document.getElementById('login-card');
+    const usernameInput = document.getElementById('usernameInput');
+    const loginBtn = document.getElementById('loginBtn');
+    const chatContainer = document.getElementById('chat-container');
+
+    const messages = document.getElementById('messages');
+    const input = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const roomButtons = document.querySelectorAll('#rooms button');
+
+    let username = '';
+    let currentRoom = 'Sala 1';
+
+    function saveMessage(room, msgObj) {
+      const data = JSON.parse(localStorage.getItem(room) || "[]");
+      data.push(msgObj);
+      localStorage.setItem(room, JSON.stringify(data));
+    }
+
+    function loadMessages(room) {
+      messages.innerHTML = '';
+      const data = JSON.parse(localStorage.getItem(room) || "[]");
+      data.forEach(msg => {
+        const item = document.createElement('div');
+        item.textContent = `${msg.username}: ${msg.message}`;
+        item.className = msg.username === username ? 'my-message' : 'other-message';
+        messages.appendChild(item);
+      });
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    loginBtn.addEventListener('click', () => {
+      const name = usernameInput.value.trim();
+      if(name) {
+        username = name;
+        loginCard.style.display = 'none';
+        chatContainer.style.display = 'block';
+        socket.emit('join room', currentRoom);
+        loadMessages(currentRoom);
+      }
+    });
+
+    roomButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        roomButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const newRoom = btn.dataset.room;
+        socket.emit('switch room', { oldRoom: currentRoom, newRoom });
+        currentRoom = newRoom;
+        loadMessages(currentRoom);
+      });
+    });
+
+
+    sendBtn.addEventListener('click', () => {
+      const msg = input.value.trim();
+      if(msg) {
+        const msgObj = { username, message: msg, room: currentRoom };
+        socket.emit('chat message', msgObj);
+        saveMessage(currentRoom, msgObj);
+        loadMessages(currentRoom);
+        input.value = '';
+      }
+    });
+
+    input.addEventListener('keypress', e => {
+      if(e.key === 'Enter') sendBtn.click();
+    });
+
+    socket.on('chat message', (msgObj) => {
+      if(msgObj.room === currentRoom && msgObj.username !== username) {
+        saveMessage(currentRoom, msgObj);
+        loadMessages(currentRoom);
+      }
+    });
+  </script>
+</body>
+</html>
